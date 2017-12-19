@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+
+		<title>Closed-book-room</title>
+
+<style>
+.div_border {
+	border: solid 1px grey;
+}
+</style>
+
+	</head>
+
+	<body>
+		<script src="js/vue.js"></script>
+		<script src="js/fetch.js"></script>
+
+		<a href="/swagger-ui.html">Swagger API Definition</a><br>
+		<hr>
+
+		<div id="app">
+			<mainview></mainview>
+		</div>
+
+<script type='text/x-template' id='login-panel-tmpl'>
+	<div class='div_border'>
+		Username: <input type='text' v-model='username' placeholder="테스트 사용자ID = test"><br>
+		Password: <input type='text' v-model='password' placeholder="테스트 사용자비번 = test"><br>
+		<input type='button' value='LOGIN' v-on:click="login()"><br>
+		<input type='button' value='LOGOUT' v-on:click="logout()"><br>
+		로그인상태=[{{login_result}}]
+	</div>
+</script>
+
+<script type='text/x-template' id='navbar-tmpl'>
+	<div class='div_border'>
+		<ul>
+			<li><button v-on:click="search()">책검색</button></li>
+			<li><button v-on:click="history()">히스토리</button></li>
+			<li><button v-on:click="bookmark()">북마크</button></li>
+		</ul>
+	</div>
+</script>
+
+<script type='text/x-template' id='mainview-tmpl'>
+	<div>
+		<login-panel></login-panel><br>
+		<navbar></navbar><br>
+		<book-search v-show="bookSearchVisible"></book-search>
+		<book-history v-show="bookHistoryVisible"></book-history>
+		<book-bookmark v-show="bookBookmarkVisible"></book-bookmark>
+	</div>
+</script>
+
+<script type='text/x-template' id='book-search-tmpl'>
+	<div class='div_border'>
+		<h1>책검색</h1>
+
+		<select v-model="category">
+		  <option value="">선택안함</option>
+		  <option v-for="cat in kakao_categories" :value="cat.code">
+			{{cat.level1 + ' / ' + cat.level2}}
+		  </option>
+		</select>
+
+		<input type='text' placeholder='검색어' v-model="query">
+
+		<select v-model="sort">
+		  <option value="sales">정렬=판매량</option>
+		  <option value="recency">정렬=최신순</option>
+		  <option value="accuracy">정렬=정확도</option>
+		</select>
+
+		<select v-model="target">
+		  <option value="all">전체에서</option>
+		  <option value="title">제목에서</option>
+		  <option value="isbn">ISBN에서</option>
+		  <option value="keyword">키워드에서</option>
+		  <option value="overview">소개글에서</option>
+		  <option value="publisher">출판사이름에서</option>
+		</select>
+
+		<br>
+		<button v-on:click="search()">검색</button>
+		<hr>
+
+		<ol>
+			<li v-for="it in result">
+			<a :href="it.url" target="_blank">
+			<img :src="it.thumbnail">
+			{{it.title}}
+			</a>
+			{{it}}
+			</li>
+		</ol>
+		<br>
+		<i>meta = {{result_meta}}</i>
+	
+	</div>
+</script>
+
+<script type='text/x-template' id='book-history-tmpl'>
+	<div class='div_border'>
+		<h1>검색히스토리</h1>
+		<button v-on:click="list()">검색</button>
+		<br>
+		<ol>
+			<li v-for="it in result">
+			<button v-on:click="replay(it)">다시 검색하기</button>
+			<button v-on:click="bookmark(it.id)">북마크하기</button>
+			{{it}}
+			</li>
+		</ol>
+	</div>
+</script>
+
+<script type='text/x-template' id='book-bookmark-tmpl'>
+	<div class='div_border'>
+		<h1>검색북마크</h1>
+		Page=<input type='text' v-model="page_num">&nbsp;
+		PageSize=<input type='text' v-model="page_size">&nbsp;
+		Sort=<select v-model="page_sort">
+				<option value='ctime'>ctime</option>
+				<option value='providerId'>providerId</option>
+			</select>&nbsp;
+		Desc/Asc=<select v-model="page_dir">
+				<option value='DESC'>DESC</option>
+				<option value='ASC'>ASC</option>
+			</select>&nbsp;
+		<br>
+		<button v-on:click="list()">검색</button>
+		<br>
+
+		<i>
+		total-pages={{total_pages}} /
+		total-elements={{total_elements}}
+		</i>
+
+		<br>
+
+		<ol>
+			<li v-for="it in result">
+			<button v-on:click="replay(it)">다시 검색하기</button>
+			<button v-on:click="delBookmark(it.id)">삭제하기</button>
+			{{it}}
+			</li>
+		</ol>
+	</div>
+</script>
+
+<script>
+
+function add_auth_header(headers, username, password){
+	//console.log(username);
+	//console.log(password);
+	headers["Authorization"] = "Basic " + btoa(username + ":" + password);
+	return headers;
+}
+
+// <login-panel/>
+var login_panel_data = {
+	username: '',
+	password: '',
+	login_result: null
+};
+
+Vue.component('login-panel', {
+	template: '#login-panel-tmpl',
+	data: function(){
+		return login_panel_data;
+	},
+	methods: {
+		login: function () {
+			var $this = this;
+			$this.$parent.logged_in = false;
+			$this.$parent.auth_header = null;
+			$this.$parent.hideAll();
+			var headers = {};
+			add_auth_header(headers, this.username, this.password);
+			fetch('/v1/current-user', { 'headers': headers })
+				.then(function(response){
+					//console.log(response);
+					return response.text()
+				})
+				.then(function(text){
+					$this.login_result = text;
+					var j = JSON.parse(text);
+					if (j['username'] == $this.username) {
+						$this.$parent.logged_in = true;
+						$this.$parent.auth_header = headers['Authorization'];
+					}
+				});
+		},
+		logout: function(event){
+			this.username = '';
+			this.password = '';
+			this.login();
+		}
+	},
+	mounted: function(){
+		// TODO: only-for-testing!!!
+		var $this = this;
+		$this.username='test';
+		$this.password='test';
+		$this.login();
+	}
+});
+
+// <book-search/>
+var book_search_data = {
+	kakao_categories: null,
+	query: '',
+	sort: 'sales',
+	page: 1,
+	size: 10,
+	target: 'all',
+	category: '',
+	result: [],
+	result_meta: null
+};
+Vue.component('book-search', {
+	template: '#book-search-tmpl',
+	data: function(){
+		return book_search_data;
+	},
+	methods: {
+		search: function(){
+			if(this.query == '') {
+				alert('검색어를 입력해주세요.');
+				return;
+			}
+			//
+			var $this = this;
+			this.page=1;
+			this.result = [];
+			this.result_meta = null;
+			//console.log(this.category);
+			var providerId="kakao";
+			var req = {
+				query: this.query,
+				sort: this.sort,
+				page: this.page,
+				size: this.size,
+				target: this.target,
+				category: this.category
+			};
+			fetch('/v1/book/search/' + providerId, {
+				'headers': {
+					'Accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': this.$parent.auth_header
+				},
+				method: "POST",
+				body: JSON.stringify(req)
+			})
+				.then(function(response){
+					console.log(response);
+					return response.text();
+				})
+				.then(function(text){
+					var o = JSON.parse(text);
+					//console.log(o);
+					$this.result = o['bookSearchResult']['documents'];
+					$this.result_meta = o['bookSearchResult']['meta'];
+				})
+			;
+		}
+	},
+	mounted: function(){
+		var $this = this;
+		fetch('/v1/codes/kakao-book-search/categories')
+			.then(function(response){
+				return response.text();
+			})
+			.then(function(text){
+				var obj = JSON.parse(text);
+				$this.kakao_categories = obj;
+			});
+		;
+	}
+});
+
+// <book-history/>
+var book_history_data = {
+	result: []
+};
+Vue.component('book-history', {
+	template: '#book-history-tmpl',
+	data: function(){
+		return book_history_data;
+	},
+	methods: {
+		list: function(){
+			var $this = this;
+			this.result = [];
+			var req = {
+			};
+			fetch('/v1/book/search-history', {
+				'headers': {
+					'Accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': this.$parent.auth_header
+				},
+				method: "GET"
+			})
+				.then(function(response){
+					console.log(response);
+					return response.text();
+				})
+				.then(function(text){
+					var o = JSON.parse(text);
+					$this.result = o;
+				})
+			;
+		},
+		replay: function(history){
+			alert("TBD: Vue.js을 잘몰라 API으로는 가능하지만 구현하지 못했습니다. " + JSON.stringify(history));
+		},
+		bookmark: function(history_id){
+			fetch('/v1/book/search-bookmark/' + history_id, {
+				'headers': {
+					'Accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': this.$parent.auth_header
+				},
+				method: "POST"
+			})
+				.then(function(response){
+					return response.text();
+				})
+				.then(function(text){
+					alert(text);
+				})
+			;
+		}
+	}
+});
+
+// <book-bookmark/>
+var book_bookmark_data = {
+	page_num: 0,
+	page_size: 10,
+	page_sort: 'ctime',
+	page_dir: 'DESC',
+	total_pages: null,
+	total_elements: null,
+	result: []
+};
+Vue.component('book-bookmark', {
+	template: '#book-bookmark-tmpl',
+	data: function(){
+		return book_bookmark_data;
+	},
+	methods: {
+		delBookmark: function(bookmark_id){
+			// delete
+			var $this = this;
+			fetch('/v1/book/search-bookmark/' + bookmark_id, {
+				'headers': {
+					'Accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': this.$parent.auth_header
+				},
+				method: "DELETE"
+			})
+				.then(function(response){
+					return response.text();
+				})
+				.then(function(text){
+					alert(text);
+					$this.list();
+				})
+			;
+		},
+		replay: function(history){
+			alert("TBD: Vue.js을 잘몰라 API으로는 가능하지만 구현하지 못했습니다. " + JSON.stringify(history));
+		},
+		list: function(){
+			var $this = this;
+			var qs = 'page=' + $this.page_num + '&size=' + $this.page_size + '&sort=' + $this.page_sort + '&direction=' + $this.page_dir;
+			fetch('/v1/book/search-bookmark?' + qs, {
+				'headers': {
+					'Accept': 'application/json',
+					'Content-Type': 'application/json',
+					'Authorization': this.$parent.auth_header
+				},
+				method: "GET"
+			})
+				.then(function(response){
+					return response.text();
+				})
+				.then(function(text){
+					var o = JSON.parse(text);
+					$this.result = o.content;
+					$this.total_pages = o.totalPages;
+					$this.total_elements = o.totalElements;
+				})
+			;
+		}
+	}
+});
+
+// <navbar/>
+var navbar_data = {};
+Vue.component('navbar', {
+	template: '#navbar-tmpl',
+	data: function(){
+		return navbar_data;
+	},
+	methods: {
+		check_logged_in: function(){
+			if(false ==this.$parent.logged_in){
+				alert("로그인해주세요.");
+				return false;
+			} else return true;
+		},
+		search: function(){
+			if(this.check_logged_in()){
+				this.$parent.showBookSearch();
+			}
+		},
+		history: function(){
+			if(this.check_logged_in()){
+				this.$parent.showBookHistory();
+			}
+		},
+		bookmark: function(){
+			if(this.check_logged_in()){
+				this.$parent.showBookBookmark();
+			}
+		}
+	}
+});
+
+// <mainview/>
+var mainview_data = {
+	logged_in: false,
+	auth_header: null,
+	bookSearchVisible: false,
+	bookHistoryVisible: false,
+	bookBookmarkVisible: false
+};
+Vue.component('mainview', {
+	template: '#mainview-tmpl',
+	data: function(){
+		return mainview_data;
+	}, 
+	methods: {
+		hideAll: function(){
+			this.bookSearchVisible = false;
+			this.bookHistoryVisible = false;
+			this.bookBookmarkVisible = false;
+		},
+		showBookSearch: function(){
+			this.hideAll();
+			this.bookSearchVisible = true;
+		},
+		showBookHistory: function(){
+			this.hideAll();
+			this.bookHistoryVisible = true;
+		},
+		showBookBookmark: function(){
+			this.hideAll();
+			this.bookBookmarkVisible = true;
+		}
+	}
+});
+
+// #app!
+var app = new Vue({
+  el: '#app',
+  data: {
+  }
+});
+
+
+</script>
+
+	</body>
+
+</html>
