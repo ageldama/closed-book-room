@@ -162,6 +162,8 @@ function add_auth_header(headers, username, password){
 	return headers;
 }
 
+var bus = new Vue();
+
 // <login-panel/>
 var login_panel_data = {
 	username: '',
@@ -220,6 +222,7 @@ var book_search_data = {
 	size: 10,
 	target: 'all',
 	category: '',
+    providerId: 'kakao',
 	result: [],
 	result_meta: null
 };
@@ -240,7 +243,6 @@ Vue.component('book-search', {
 			this.result = [];
 			this.result_meta = null;
 			//console.log(this.category);
-			var providerId="kakao";
 			var req = {
 				query: this.query,
 				sort: this.sort,
@@ -249,7 +251,7 @@ Vue.component('book-search', {
 				target: this.target,
 				category: this.category
 			};
-			fetch('/v1/book/search/' + providerId, {
+			fetch('/v1/book/search/' + $this.providerId, {
 				'headers': {
 					'Accept': 'application/json',
 					'Content-Type': 'application/json',
@@ -259,7 +261,7 @@ Vue.component('book-search', {
 				body: JSON.stringify(req)
 			})
 				.then(function(response){
-					console.log(response);
+					//console.log(response);
 					return response.text();
 				})
 				.then(function(text){
@@ -269,10 +271,23 @@ Vue.component('book-search', {
 					$this.result_meta = o['bookSearchResult']['meta'];
 				})
 			;
-		}
+		},
+        replaySearch: function(history){
+            //console.log(history);
+            var r = JSON.parse(history.requestJson);
+            //console.log(r);
+            this.providerId = history.providerId;
+            this.query = r.query;
+            this.sort = r.sort;
+            this.page = r.page;
+            this.target = r.target;
+            this.category = r.category;
+            this.search();
+        }
 	},
 	mounted: function(){
 		var $this = this;
+        bus.$on('replay-book-search', $this.replaySearch);
 		fetch('/v1/codes/kakao-book-search/categories')
 			.then(function(response){
 				return response.text();
@@ -309,7 +324,7 @@ Vue.component('book-history', {
 				method: "GET"
 			})
 				.then(function(response){
-					console.log(response);
+					//console.log(response);
 					return response.text();
 				})
 				.then(function(text){
@@ -319,7 +334,8 @@ Vue.component('book-history', {
 			;
 		},
 		replay: function(history){
-			alert("TBD: Vue.js을 잘몰라 API으로는 가능하지만 구현하지 못했습니다. " + JSON.stringify(history));
+            this.$parent.showBookSearch();
+            bus.$emit('replay-book-search', history);
 		},
 		bookmark: function(history_id){
 			fetch('/v1/book/search-bookmark/' + history_id, {
@@ -378,7 +394,8 @@ Vue.component('book-bookmark', {
 			;
 		},
 		replay: function(history){
-			alert("TBD: Vue.js을 잘몰라 API으로는 가능하지만 구현하지 못했습니다. " + JSON.stringify(history));
+            this.$parent.showBookSearch();
+            bus.$emit('replay-book-search', history);
 		},
 		list: function(){
 			var $this = this;
