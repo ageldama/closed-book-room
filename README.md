@@ -38,4 +38,4 @@
 1. Javafaker : 간단히 랜덤 아이디, 이메일 등 생성하기 위해 사용
 1. JaCoCo : Test Code Coverage Report 생성위해 Maven 플러그인으로 사용
 1. HSQLDb : 애플리케이션 디비로 인메모리 디비 구현으로 사용
-1. JUnit 4, Mockito, Assertj : 테스트케이스 작성에 사용, spring-boot-starter-test 의존성으로 사용 및 WebMVC등을 위한 `spring-*-test` 등도 함께
+1. JUnit 4, Mockito, Assertj : 테스트케이스 작성에 사용, spring-boot-starter-test 의존성으로 사용 및 WebMVC등을 위한 `spring-*-test` 등도 함께 사용
