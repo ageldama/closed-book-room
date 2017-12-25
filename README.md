@@ -21,3 +21,10 @@
 ## Admin endpoints
 1. Can create new user, change password of user and activate/deactive user account,
     1. See `admin-controller`-section of Swagger definition.
+    1. Default Admin: ID=`admin` Password=`admin`
+    1. If you really needs to add new admin account, please add an entry in `./src/main/resources/db/migration/hsqldb/V1.001__create_users.sql` like one for `admin`. (Currently adding admin account through API-endpoint is not supported)
+
+### Add an user
+1. `curl -v -XPOST http://admin:admin@localhost:8080/v1/admin/new-user/foobar` : creates new deactivated user account with random-generated-password.
+1. `curl -v -XPATCH http://admin:admin@localhost:8080/v1/admin/activate-user/foobar\?activeness\=true` : activate account.
+1. `curl -v -XPOST http://admin:admin@localhost:8080/v1/admin/user-password/foobar -dfoobar -H"Content-Type: text/plain"` : set password
